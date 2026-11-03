@@ -1,0 +1,451 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Urja Meter API",
+    "version": "1.0.0",
+    "description": "A read-only REST API over the Urja Meter Ops portal. Portal authentication, SvelteKit decoding, timestamp normalization, and export signing are handled by the service."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Check local service health",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "The service is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meters": {
+      "get": {
+        "summary": "Search meters",
+        "operationId": "searchMeters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Meter ID or serial number search text",
+            "schema": { "type": "string", "maxLength": 100, "default": "" }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of matching meters",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MeterSearchResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "$ref": "#/components/responses/PortalError" },
+          "503": { "$ref": "#/components/responses/PortalRateLimited" },
+          "504": { "$ref": "#/components/responses/PortalTimeout" }
+        }
+      }
+    },
+    "/api/v1/meters/export": {
+      "get": {
+        "summary": "Export all meters",
+        "operationId": "exportMeters",
+        "description": "Returns the normalized full dataset using the portal's signed export flow.",
+        "responses": {
+          "200": {
+            "description": "The full meter dataset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExportResponse" }
+              }
+            }
+          },
+          "502": { "$ref": "#/components/responses/PortalError" },
+          "503": { "$ref": "#/components/responses/PortalRateLimited" },
+          "504": { "$ref": "#/components/responses/PortalTimeout" }
+        }
+      }
+    },
+    "/api/v1/meters/{meterId}": {
+      "get": {
+        "summary": "Get meter detail",
+        "operationId": "getMeter",
+        "parameters": [
+          { "$ref": "#/components/parameters/meterId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nameplate, location, and network hierarchy",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MeterDetailResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "502": { "$ref": "#/components/responses/PortalError" },
+          "503": { "$ref": "#/components/responses/PortalRateLimited" },
+          "504": { "$ref": "#/components/responses/PortalTimeout" }
+        }
+      }
+    },
+    "/api/v1/meters/{meterId}/consumption": {
+      "get": {
+        "summary": "Get recent consumption readings",
+        "operationId": "getConsumption",
+        "description": "Returns cumulative register readings, not calculated interval deltas.",
+        "parameters": [
+          { "$ref": "#/components/parameters/meterId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent half-hour readings",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConsumptionResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "502": { "$ref": "#/components/responses/PortalError" },
+          "503": { "$ref": "#/components/responses/PortalRateLimited" },
+          "504": { "$ref": "#/components/responses/PortalTimeout" }
+        }
+      }
+    },
+    "/api/v1/transformers": {
+      "get": {
+        "summary": "List distribution transformers",
+        "operationId": "getTransformers",
+        "parameters": [
+          { "$ref": "#/components/parameters/page" }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of distribution transformers",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransformerListResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "$ref": "#/components/responses/PortalError" },
+          "503": { "$ref": "#/components/responses/PortalRateLimited" },
+          "504": { "$ref": "#/components/responses/PortalTimeout" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "meterId": {
+        "name": "meterId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,32}$"
+        },
+        "example": "J100000"
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Request validation failed",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Meter not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "PortalError": {
+        "description": "Portal authentication, availability, signing, or response error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "PortalRateLimited": {
+        "description": "The portal is rate limiting requests",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "PortalTimeout": {
+        "description": "The portal did not respond in time",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "example": "not_found" },
+              "message": { "type": "string", "example": "Meter not found" },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": { "type": "string" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "required": ["page", "pageSize", "total", "totalPages"],
+        "properties": {
+          "page": { "type": "integer", "example": 1 },
+          "pageSize": { "type": "integer", "example": 20 },
+          "total": { "type": "integer", "example": 403 },
+          "totalPages": { "type": "integer", "example": 21 }
+        }
+      },
+      "MeterSummary": {
+        "type": "object",
+        "required": [
+          "meterId",
+          "serialNumber",
+          "make",
+          "phaseType",
+          "installationStatus",
+          "distributionTransformerCode"
+        ],
+        "properties": {
+          "meterId": { "type": "string", "example": "J100000" },
+          "serialNumber": { "type": "string", "example": "SE33962" },
+          "make": { "type": "string", "example": "HPL" },
+          "phaseType": { "type": "string", "example": "single" },
+          "installationStatus": { "type": "string", "example": "Installed" },
+          "distributionTransformerCode": { "type": "string", "example": "DT-001" }
+        }
+      },
+      "HierarchyNode": {
+        "type": "object",
+        "required": ["name", "code"],
+        "properties": {
+          "name": { "type": "string", "example": "Malviya Nagar DT 1" },
+          "code": { "type": "string", "nullable": true, "example": "DT-001" }
+        }
+      },
+      "Hierarchy": {
+        "type": "object",
+        "required": [
+          "zone",
+          "circle",
+          "division",
+          "subdivision",
+          "substation",
+          "feeder",
+          "distributionTransformer"
+        ],
+        "properties": {
+          "zone": { "$ref": "#/components/schemas/HierarchyNode" },
+          "circle": { "$ref": "#/components/schemas/HierarchyNode" },
+          "division": { "$ref": "#/components/schemas/HierarchyNode" },
+          "subdivision": { "$ref": "#/components/schemas/HierarchyNode" },
+          "substation": { "$ref": "#/components/schemas/HierarchyNode" },
+          "feeder": { "$ref": "#/components/schemas/HierarchyNode" },
+          "distributionTransformer": { "$ref": "#/components/schemas/HierarchyNode" }
+        }
+      },
+      "MeterDetail": {
+        "type": "object",
+        "required": [
+          "meterId",
+          "serialNumber",
+          "make",
+          "phaseType",
+          "installationStatus",
+          "installationType",
+          "location",
+          "hierarchy"
+        ],
+        "properties": {
+          "meterId": { "type": "string", "example": "J100000" },
+          "serialNumber": { "type": "string", "example": "SE33962" },
+          "make": { "type": "string", "example": "HPL" },
+          "phaseType": { "type": "string", "example": "single" },
+          "installationStatus": { "type": "string", "example": "Decommissioned" },
+          "installationType": { "type": "string", "example": "Whole Current" },
+          "location": {
+            "type": "object",
+            "required": ["latitude", "longitude"],
+            "properties": {
+              "latitude": { "type": "number", "example": 26.938961002479868 },
+              "longitude": { "type": "number", "example": 75.83095696146852 }
+            }
+          },
+          "hierarchy": { "$ref": "#/components/schemas/Hierarchy" }
+        }
+      },
+      "MeterSearchResponse": {
+        "type": "object",
+        "required": ["data", "pagination"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MeterSummary" }
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        }
+      },
+      "MeterDetailResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/MeterDetail" }
+        }
+      },
+      "ConsumptionReading": {
+        "type": "object",
+        "required": ["timestamp", "cumulativeKwh", "cumulativeKvah", "voltageR"],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-06-23T18:00:00.000Z"
+          },
+          "cumulativeKwh": { "type": "number", "example": 48438.74 },
+          "cumulativeKvah": { "type": "number", "example": 52313.84 },
+          "voltageR": { "type": "number", "example": 226 }
+        }
+      },
+      "ConsumptionResponse": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ConsumptionReading" }
+          },
+          "meta": {
+            "type": "object",
+            "required": ["count", "firstTimestamp", "lastTimestamp", "sourceTimezone"],
+            "properties": {
+              "count": { "type": "integer", "example": 337 },
+              "firstTimestamp": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "lastTimestamp": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "sourceTimezone": { "type": "string", "example": "Asia/Kolkata" }
+            }
+          }
+        }
+      },
+      "Transformer": {
+        "type": "object",
+        "required": ["code", "name", "feederCode", "capacityKva"],
+        "properties": {
+          "code": { "type": "string", "example": "DT-001" },
+          "name": { "type": "string", "example": "Malviya Nagar DT 1" },
+          "feederCode": { "type": "string", "example": "F-001" },
+          "capacityKva": { "type": "number", "example": 100 }
+        }
+      },
+      "TransformerListResponse": {
+        "type": "object",
+        "required": ["data", "pagination"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Transformer" }
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        }
+      },
+      "ExportMeter": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MeterDetail" },
+          {
+            "type": "object",
+            "required": ["distributionTransformerCode", "build"],
+            "properties": {
+              "distributionTransformerCode": { "type": "string", "example": "DT-001" },
+              "build": { "type": "string", "example": "v2" }
+            }
+          }
+        ]
+      },
+      "ExportResponse": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExportMeter" }
+          },
+          "meta": {
+            "type": "object",
+            "required": ["total"],
+            "properties": {
+              "total": { "type": "integer", "example": 403 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

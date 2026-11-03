@@ -1,0 +1,24 @@
+{
+  "name": "urja-meter-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A documented REST API over the Urja Meter Ops portal",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "devalue": "^6.0.3",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
+  }
+}
